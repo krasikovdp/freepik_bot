@@ -3,8 +3,10 @@ from telegram import Update
 from telegram.ext import Updater, CallbackContext, MessageHandler, Filters
 import datetime
 import pytz
+import requests
+import re
 
-updater = Updater("HERE GOES MY BOT API", use_context=True)
+updater = Updater("", use_context=True)
 user_limit = 1
 total_message_limit = 100
 
@@ -76,6 +78,26 @@ def unlock_user(update, context, user_id=None):
     except:
         pass
 
+def freepik_general_to_download_url(url: str) -> str:
+    if 'download-file' in url:
+        return url
+    file_id = re.search(r'(\d+)\.htm', url).group(1)
+    return f'https://www.freepik.com/download-file/{file_id}'
+
+def download_freepik(url: str) -> (bytes, str):
+    url = freepik_general_to_download_url(url)
+    headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0', 'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'}
+    resp = requests.get(url, headers=headers)
+    if resp.status_code != 200:
+        raise RuntimeError
+    content = resp.content
+    filename_match = re.search(r'filename=(.+)$', resp.headers['Content-Disposition'])
+    if filename_match is None:
+        filename = ''
+    else:
+        filename = filename_match.group(1)
+    return content, filename
+
 def welcome(update: Update, context: CallbackContext):
     for member in update.message.new_chat_members:
         #update welcome message here
@@ -117,13 +139,15 @@ def message(update: Update, context: CallbackContext):
                     link += "/"
                 print(link)
                 whitelist.remove(link)
-    elif update.message.text[:8] == "https://" or update.message.text[:7] == "http://":
+    if update.message.text[:8] == "https://" or update.message.text[:7] == "http://":
         #if text in whitelist
-        link = update.message.text.split("/")
-        link = link[0] + "//" + link[2] + "/"
-        print(link)
-        print(link in whitelist)
-        if link in whitelist:
+        reduced_link = update.message.text.split("/")
+        reduced_link = reduced_link[0] + "//" + reduced_link[2] + "/"
+        print(reduced_link)
+        print(reduced_link in whitelist)
+        if reduced_link in whitelist:
+            document, filename = download_freepik(update.message.text)
+            update.effective_chat.send_document(document, filename=filename)
             if run_once == 0:
                 daily(update, context)
                 run_once = 1
