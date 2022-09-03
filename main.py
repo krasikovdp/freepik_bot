@@ -14,24 +14,6 @@ def inline_handler(msg: str):
     return handler
 
 
-def activate_handler(update: Update, ctx: CallbackContext):
-    ctx.chat_data['active'] = True
-    update.effective_chat.send_message(f'Group {update.effective_chat.full_name} is activated')
-
-
-def deactivate_handler(update: Update, ctx: CallbackContext):
-    ctx.chat_data['active'] = False
-    update.effective_chat.send_message(f'Group {update.effective_chat.full_name} is deactivated')
-
-
-def is_active_handler(update: Update, ctx: CallbackContext):
-    if ctx.chat_data.get('active', False):
-        msg = 'This group is active'
-    else:
-        msg = 'This group is not active'
-    update.effective_chat.send_message(msg)
-
-
 def promote_handler(update: Update, ctx: CallbackContext):
     usernames = update.message.text.split(' ')[1:]
     if len(usernames) == 0:
@@ -116,11 +98,6 @@ def main():
         MessageHandler(private_chat & regular_users, inline_handler('You are not an admin')),
 
         CommandHandler('start', inline_handler('start'), filters=private_chat & only_admins),
-
-        CommandHandler('activate', activate_handler, filters=group_chat & only_admins),
-        CommandHandler('deactivate', deactivate_handler, filters=group_chat & only_admins),
-        CommandHandler('is_active', is_active_handler, filters=group_chat & only_admins),
-
         CommandHandler('promote', promote_handler, filters=private_chat & only_admins),
         CommandHandler('demote', demote_handler, filters=private_chat & only_admins),
         CommandHandler('user_status', user_status_handler, filters=private_chat & only_admins),
