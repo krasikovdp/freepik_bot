@@ -1,10 +1,16 @@
 import os
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import datetime as dt
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Updater, CallbackContext, CommandHandler, Dispatcher, Filters, MessageHandler, \
-    PicklePersistence
+    PicklePersistence, JobQueue, Defaults
 from freepik import Freepik
 import logging
+import pytz
+from roles import roles
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+DEFAULT_TZINFO = pytz.FixedOffset(5 * 60 + 30)
 
 
 def inline_handler(msg: str):
@@ -14,77 +20,108 @@ def inline_handler(msg: str):
     return handler
 
 
-def promote_handler(update: Update, ctx: CallbackContext):
-    usernames = update.message.text.split(' ')[1:]
-    if len(usernames) == 0:
-        return update.effective_chat.send_message('You have to specify the username (for example: /promote user123)')
-    usernames = [username if not username.startswith('@') else username[1:] for username in usernames]
-    ctx.bot_data['members'].update(set(usernames))
-    update.effective_chat.send_message('The following users have been promoted:\n' + "\n".join(usernames))
+def set_role_handler(update: Update, ctx: CallbackContext):
+    if len(ctx.args) < 2:
+        return update.message.reply_text('You have to specify the role and the username(s) like this: /set_role role_name username\n'
+                                         'You can see all roles with /roles_list')
+    role = ctx.args[0]
+    usernames = [username if not username.startswith('@') else username[1:] for username in ctx.args[1:]]
+    for username in usernames:
+        ctx.bot_data['users'][username] = default_user(role)
+    update.message.reply_text(f'The following users have been promoted to {role}:\n' + "\n".join(usernames))
 
 
-def demote_handler(update: Update, ctx: CallbackContext):
-    usernames = update.message.text.split(' ')[1:]
-    if len(usernames) == 0:
-        return update.effective_chat.send_message('You have to specify the username (for example: /demote user123)')
-    usernames = [username if not username.startswith('@') else username[1:] for username in usernames]
-    ctx.bot_data['members'].difference_update(set(usernames))
-    update.effective_chat.send_message('The following users have been demoted:\n' + "\n".join(usernames))
-
-
-def user_status_handler(update: Update, ctx: CallbackContext):
-    usernames = update.message.text.split(' ')[1:]
-    if len(usernames) == 0:
-        return update.effective_chat.send_message('You have to specify the username (for example: /user_status user123)')
-    usernames = [username if not username.startswith('@') else username[1:] for username in usernames]
+def roles_list_handler(update: Update, ctx: CallbackContext):
     lines = []
-    for username in sorted(usernames):
-        if username in ctx.bot_data['members']:
-            lines.append(f'{username} is a member')
-        elif username in ctx.bot_data['admin_usernames']:
-            lines.append(f'{username} is an admin')
-        else:
-            lines.append(f'{username} is a regular user')
-    update.effective_chat.send_message('\n'.join(lines))
+    indent = 2
+    for role, params in roles.items():
+        lines.append(role)
+        lines.append('\n'.join(f'{" " * indent}{k} = {v}' for k, v in params.items()))
+    msg = '\n'.join(lines)
+    if not msg:
+        msg = 'There are no roles'
+    update.message.reply_text(msg)
 
 
 def members_list_handler(update: Update, ctx: CallbackContext):
-    members = [username for username in sorted(list(ctx.bot_data['members']))]
-    if members:
-        update.effective_chat.send_message('\n'.join(members))
-    else:
-        update.effective_chat.send_message('There are no members')
+    lines = [f'{user_data["role"]} - {username}' for username, user_data in ctx.bot_data['users']]
+    msg = '\n'.join(sorted(lines))
+    if not msg:
+        msg = 'There are no members'
+    update.message.reply_text(msg)
+
+
+def restrict_if_necessary(update: Update, ctx: CallbackContext):
+    user_data = ctx.bot_data['users'][update.effective_user.username]
+    if user_data['uses'] <= 0:
+        print(f'retstricting user @{update.effective_user.username}')
+        today_12am = dt.datetime.now(DEFAULT_TZINFO).replace(hour=0, minute=0, second=0, microsecond=0)
+        print(today_12am)
+        print(dt.timedelta(days=user_data['restrict_days']))
+        user_data['unrestrict_date'] = (today_12am + dt.timedelta(days=user_data['restrict_days'])).isoformat()
+        permissions = ChatPermissions(*([False] * 8))  # set all 8 arguments to False
+        ctx.bot.restrict_chat_member(update.effective_chat.id, update.effective_user.id,
+                                     permissions, today_12am + dt.timedelta(days=user_data['restrict_days']))
 
 
 def url_handler(update: Update, ctx: CallbackContext):
     input_url = update.message.text
-    try:
-        download_url = ctx.bot_data['freepik_api'].input_url2download_url(input_url)
-        update.effective_chat.send_message(
-            'To download the file, use the button below',
-            reply_to_message_id=update.message.message_id,
-            reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url))
-        )
-    except AttributeError:
-        update.effective_chat.send_message(
-            'This is not a valid url',
-            reply_to_message_id=update.message.message_id
-        )
+    user_data = ctx.bot_data['users'].setdefault(update.effective_user.username, default_user())
+    if user_data['uses'] > 0:
+        download_url_sent = False
+        try:
+            download_url = ctx.bot_data['freepik_api'].input_url2download_url(input_url)
+            update.message.reply_text(
+                'To download the file, use the button below',
+                reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url)))
+            download_url_sent = True
+        except AttributeError:
+            update.message.reply_text('This is not a valid url')
+        except Exception as e:
+            update.message.reply_text('Something went wrong with the request')
+            print(e)
+        if download_url_sent:
+            user_data['uses'] -= 1
+    else:
+        update.message.delete()
+    restrict_if_necessary(update, ctx)
+
+
+def default_user(role: str = 'regular'):
+    user_data = roles[role]
+    user_data['role'] = role
+    today_12am = dt.datetime.now(DEFAULT_TZINFO).replace(hour=0, minute=0, second=0, microsecond=0)
+    user_data['unrestrict_date'] = (today_12am + dt.timedelta(days=user_data['restrict_days'])).isoformat()
+    return user_data
+
+
+def unrestrict_everyone_necessary(ctx: CallbackContext):
+    now = dt.datetime.now(DEFAULT_TZINFO)
+    for username, user_data in ctx.bot_data['users'].items():
+        if now >= dt.datetime.fromisoformat(user_data['unrestrict_date']):
+            for k, v in default_user(user_data['role']).items():
+                user_data[k] = v
 
 
 def main():
-    updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True, persistence=PicklePersistence('persistence.pickle'))
+    defaults = Defaults(tzinfo=DEFAULT_TZINFO)
+    updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True,
+                      persistence=PicklePersistence('persistence.pickle'), defaults=defaults)
     dispatcher: Dispatcher = updater.dispatcher
+    dispatcher.bot_data.setdefault('users', dict())
 
-    dispatcher.bot_data.setdefault('members', set())
+    jq: JobQueue = dispatcher.job_queue
+    jq.run_once(unrestrict_everyone_necessary, 1)
+    jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
+    # jq.run_repeating(lambda ctx: print(ctx.bot_data['users']), interval=15, first=1)  # for debug
+    jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
     dispatcher.bot_data['admin_usernames'] = admin_usernames
     dispatcher.bot_data['freepik_api'] = Freepik(os.environ['FREEPIK_GR_TOKEN'])
     dispatcher.bot.set_my_commands([
-        ('/promote', 'promotes specified user(s) to member(s)'),
-        ('/demote', 'demotes specified user(s) to regular user(s)'),
-        ('/user_status', 'prints the status of the specified user(s) (regular, member, admin)'),
+        ('/set_role', 'assigns a role to user(s), usage: /set_role role username'),
+        ('/roles_list', 'prints all roles and their perks'),
         ('/members_list', 'lists all members'),
     ])
 
@@ -98,12 +135,12 @@ def main():
         MessageHandler(private_chat & regular_users, inline_handler('You are not an admin')),
 
         CommandHandler('start', inline_handler('start'), filters=private_chat & only_admins),
-        CommandHandler('promote', promote_handler, filters=private_chat & only_admins),
-        CommandHandler('demote', demote_handler, filters=private_chat & only_admins),
-        CommandHandler('user_status', user_status_handler, filters=private_chat & only_admins),
-        CommandHandler('members_list', members_list_handler, filters=private_chat & only_admins),
+        CommandHandler('set_role', set_role_handler, filters=private_chat & only_admins, pass_args=True),
+        CommandHandler('roles_list', roles_list_handler, filters=private_chat & only_admins, pass_args=True),
+        CommandHandler('members_list', members_list_handler, filters=private_chat & only_admins, pass_args=True),
 
         MessageHandler(group_chat & has_url, url_handler),
+        MessageHandler(group_chat & ~has_url & ~only_admins, lambda upd, ctx: upd.message.delete()),
 
         MessageHandler(Filters.all, lambda upd, ctx: print('unhandled message:', upd.message.text)),
     ]
