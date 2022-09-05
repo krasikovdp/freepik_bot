@@ -1,4 +1,3 @@
-import os
 import datetime as dt
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Updater, CallbackContext, CommandHandler, Dispatcher, Filters, MessageHandler, \
@@ -8,6 +7,7 @@ from flaticon import *
 import logging
 import pytz
 from roles import roles
+from ptbcontrib.postgres_persistence import PostgresPersistence
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -114,15 +114,14 @@ def unrestrict_everyone_necessary(ctx: CallbackContext):
 
 def main():
     defaults = Defaults(tzinfo=DEFAULT_TZINFO)
-    updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True,
-                      persistence=PicklePersistence('persistence.pickle'), defaults=defaults)
+    persistence = PostgresPersistence(os.environ['POSTGRES_URL'].replace('postgres://', 'postgresql://'))  # PicklePersistence('persistence.pickle')
+    updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True, persistence=persistence, defaults=defaults)
     dispatcher: Dispatcher = updater.dispatcher
     dispatcher.bot_data.setdefault('users', dict())
 
     jq: JobQueue = dispatcher.job_queue
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
-    # jq.run_repeating(lambda ctx: print(ctx.bot_data['users']), interval=15, first=1)  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
