@@ -114,7 +114,7 @@ def unrestrict_everyone_necessary(ctx: CallbackContext):
 
 def main():
     defaults = Defaults(tzinfo=DEFAULT_TZINFO)
-    persistence = PostgresPersistence(os.environ['POSTGRES_URL'].replace('postgres://', 'postgresql://'))  # PicklePersistence('persistence.pickle')
+    persistence = PostgresPersistence(os.environ['DATABASE_URL'].replace('postgres://', 'postgresql://'))  # PicklePersistence('persistence.pickle')
     updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True, persistence=persistence, defaults=defaults)
     dispatcher: Dispatcher = updater.dispatcher
     dispatcher.bot_data.setdefault('users', dict())
