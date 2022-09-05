@@ -3,7 +3,8 @@ import datetime as dt
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Updater, CallbackContext, CommandHandler, Dispatcher, Filters, MessageHandler, \
     PicklePersistence, JobQueue, Defaults
-from freepik import Freepik
+from freepik import *
+from flaticon import *
 import logging
 import pytz
 from roles import roles
@@ -44,7 +45,7 @@ def roles_list_handler(update: Update, ctx: CallbackContext):
 
 
 def members_list_handler(update: Update, ctx: CallbackContext):
-    lines = [f'{user_data["role"]} - {username}' for username, user_data in ctx.bot_data['users']]
+    lines = [f'{user_data["role"]} - {username}' for username, user_data in ctx.bot_data['users'].items()]
     msg = '\n'.join(sorted(lines))
     if not msg:
         msg = 'There are no members'
@@ -64,13 +65,21 @@ def restrict_if_necessary(update: Update, ctx: CallbackContext):
                                      permissions, today_12am + dt.timedelta(days=user_data['restrict_days']))
 
 
+def input_url2download_url(input_url: str):
+    if 'freepik' in input_url:
+        return freepik_input_url2download_url(input_url)
+    if 'flaticon' in input_url:
+        return flaticon_input_url2download_url(input_url)
+    raise AttributeError
+
+
 def url_handler(update: Update, ctx: CallbackContext):
     input_url = update.message.text
     user_data = ctx.bot_data['users'].setdefault(update.effective_user.username, default_user())
     if user_data['uses'] > 0:
         download_url_sent = False
         try:
-            download_url = ctx.bot_data['freepik_api'].input_url2download_url(input_url)
+            download_url = input_url2download_url(input_url)
             update.message.reply_text(
                 'To download the file, use the button below',
                 reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url)))
@@ -118,11 +127,10 @@ def main():
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
     dispatcher.bot_data['admin_usernames'] = admin_usernames
-    dispatcher.bot_data['freepik_api'] = Freepik(os.environ['FREEPIK_GR_TOKEN'])
     dispatcher.bot.set_my_commands([
         ('/set_role', 'assigns a role to user(s), usage: /set_role role username'),
         ('/roles_list', 'prints all roles and their perks'),
-        ('/members_list', 'lists all members'),
+        ('/members_list', 'lists all members in the format role - username'),
     ])
 
     only_admins = Filters.user(username=admin_usernames)
