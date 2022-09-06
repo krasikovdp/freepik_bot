@@ -1,5 +1,6 @@
 import datetime as dt
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from telegram.error import BadRequest
 from telegram.ext import Updater, CallbackContext, CommandHandler, Dispatcher, Filters, MessageHandler, \
     PicklePersistence, JobQueue, Defaults
 from freepik import *
@@ -57,12 +58,17 @@ def restrict_if_necessary(update: Update, ctx: CallbackContext):
     if user_data['uses'] <= 0:
         print(f'retstricting user @{update.effective_user.username}')
         today_12am = dt.datetime.now(DEFAULT_TZINFO).replace(hour=0, minute=0, second=0, microsecond=0)
-        print(today_12am)
-        print(dt.timedelta(days=user_data['restrict_days']))
         user_data['unrestrict_date'] = (today_12am + dt.timedelta(days=user_data['restrict_days'])).isoformat()
         permissions = ChatPermissions(*([False] * 8))  # set all 8 arguments to False
-        ctx.bot.restrict_chat_member(update.effective_chat.id, update.effective_user.id,
-                                     permissions, today_12am + dt.timedelta(days=user_data['restrict_days']))
+        if user_data['restrict_days'] > 1:
+            unlock_date = (today_12am + dt.timedelta(days=user_data['restrict_days'])).date().isoformat()
+            update.effective_chat.send_message(f'[@{update.effective_user.username}]\n'
+                                               f'You will be unlocked on {unlock_date}')
+        try:
+            ctx.bot.restrict_chat_member(update.effective_chat.id, update.effective_user.id,
+                                         permissions, today_12am + dt.timedelta(days=user_data['restrict_days']))
+        except BadRequest as e:
+            print(e)
 
 
 def input_url2download_url(input_url: str):
@@ -112,6 +118,13 @@ def unrestrict_everyone_necessary(ctx: CallbackContext):
                 user_data[k] = v
 
 
+def simulate_activity(ctx: CallbackContext):
+    a = 0
+    for i in range(19999999):
+        a = i * 5 + 4
+    return a
+
+
 def main():
     defaults = Defaults(tzinfo=DEFAULT_TZINFO)
     persistence = PostgresPersistence(os.environ['DATABASE_URL'].replace('postgres://', 'postgresql://'))  # PicklePersistence('persistence.pickle')
@@ -122,6 +135,7 @@ def main():
     jq: JobQueue = dispatcher.job_queue
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
+    jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
