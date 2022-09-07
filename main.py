@@ -29,7 +29,9 @@ def set_role_handler(update: Update, ctx: CallbackContext):
     role = ctx.args[0]
     usernames = [username if not username.startswith('@') else username[1:] for username in ctx.args[1:]]
     for username in usernames:
-        ctx.bot_data['users'][username] = default_user(role)
+        ctx.bot_data['users'][username] = {}
+        for k, v in default_user(role).items():
+            ctx.bot_data['users'][username][k] = v
     update.message.reply_text(f'The following users have been promoted to {role}:\n' + "\n".join(usernames))
 
 
@@ -122,7 +124,6 @@ def simulate_activity(ctx: CallbackContext):
     a = 0
     for i in range(19999999):
         a = i * 5 + 4
-    return a
 
 
 def main():
@@ -132,10 +133,15 @@ def main():
     dispatcher: Dispatcher = updater.dispatcher
     dispatcher.bot_data.setdefault('users', dict())
 
+    print(dispatcher.bot_data)
+    print(dispatcher.user_data)
+    print(dispatcher.chat_data)
+
     jq: JobQueue = dispatcher.job_queue
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
     jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
+    jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
