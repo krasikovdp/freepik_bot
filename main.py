@@ -105,11 +105,11 @@ def url_handler(update: Update, ctx: CallbackContext):
 
 
 def default_user(role: str = 'regular'):
-    user_data = roles[role]
+    user_data = roles[role].copy()
     user_data['role'] = role
     today_12am = dt.datetime.now(DEFAULT_TZINFO).replace(hour=0, minute=0, second=0, microsecond=0)
     user_data['unrestrict_date'] = (today_12am + dt.timedelta(days=user_data['restrict_days'])).isoformat()
-    return user_data
+    return user_data.copy()
 
 
 def unrestrict_everyone_necessary(ctx: CallbackContext):
@@ -133,15 +133,15 @@ def main():
     dispatcher: Dispatcher = updater.dispatcher
     dispatcher.bot_data.setdefault('users', dict())
 
-    print(dispatcher.bot_data)
-    print(dispatcher.user_data)
-    print(dispatcher.chat_data)
+    logging.info(dispatcher.bot_data)
+    logging.info(dispatcher.user_data)
+    logging.info(dispatcher.chat_data)
 
     jq: JobQueue = dispatcher.job_queue
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
     jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
-    # jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
+    jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
