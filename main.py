@@ -141,7 +141,7 @@ def main():
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
     jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
-    jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
+    # jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
