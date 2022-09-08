@@ -56,15 +56,16 @@ def members_list_handler(update: Update, ctx: CallbackContext):
 
 
 def restrict_if_necessary(update: Update, ctx: CallbackContext):
-    user_data = ctx.bot_data['users'][update.effective_user.username]
+    username = effective_username(update)
+    user_data = ctx.bot_data['users'][username]
     if user_data['uses'] <= 0:
-        print(f'retstricting user @{update.effective_user.username}')
+        print(f'retstricting user {username}')
         today_12am = dt.datetime.now(DEFAULT_TZINFO).replace(hour=0, minute=0, second=0, microsecond=0)
         user_data['unrestrict_date'] = (today_12am + dt.timedelta(days=user_data['restrict_days'])).isoformat()
         permissions = ChatPermissions(*([False] * 8))  # set all 8 arguments to False
         if user_data['restrict_days'] > 1:
             unlock_date = (today_12am + dt.timedelta(days=user_data['restrict_days'])).date().isoformat()
-            update.effective_chat.send_message(f'[@{update.effective_user.username}]\n'
+            update.effective_chat.send_message(f'[@{username}]\n'
                                                f'You will be unlocked on {unlock_date}')
         try:
             ctx.bot.restrict_chat_member(update.effective_chat.id, update.effective_user.id,
@@ -81,9 +82,15 @@ def input_url2download_url(input_url: str):
     raise AttributeError
 
 
+def effective_username(update: Update):
+    return update.effective_user.username if update.effective_user.username else update.effective_user.id
+
+
 def url_handler(update: Update, ctx: CallbackContext):
     input_url = update.message.text
-    user_data = ctx.bot_data['users'].setdefault(update.effective_user.username, default_user())
+    print(input_url)
+    print(ctx.bot_data)
+    user_data = ctx.bot_data['users'].setdefault(effective_username(update), default_user())
     if user_data['uses'] > 0:
         download_url_sent = False
         try:
@@ -102,6 +109,7 @@ def url_handler(update: Update, ctx: CallbackContext):
     else:
         update.message.delete()
     restrict_if_necessary(update, ctx)
+    print(ctx.bot_data)
 
 
 def default_user(role: str = 'regular'):
@@ -141,7 +149,7 @@ def main():
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
     jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
-    jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
+    # jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
