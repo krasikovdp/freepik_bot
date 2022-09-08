@@ -19,10 +19,12 @@ def freepik_id2download_url(id_):
         'Cookie': f'GR_TOKEN={os.environ["FREEPIK_GR_TOKEN"]}',
     }
     resp = requests.get(url, headers=headers)
-    return resp.json()['url']
+    download_url = resp.json()['url']
+    if 'hmac' not in download_url:
+        raise RuntimeError("'hmac' not in download_url, maybe update FREEPIK_GR_TOKEN")
+    return
 
 
 if __name__ == '__main__':
-    # f = Freepik(os.environ['FREEPIK_GR_TOKEN'])
-    # print(f.id2download_url(26521084))
+    print(freepik_id2download_url(11712558))  # 16618863 com 11712558 es
     pass
