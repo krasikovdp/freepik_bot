@@ -23,6 +23,8 @@ def inline_handler(msg: str):
 
 
 def set_role_handler(update: Update, ctx: CallbackContext):
+    print('bot_data =', ctx.bot_data)
+    print(update.message.text)
     if len(ctx.args) < 2:
         return update.message.reply_text('You have to specify the role and the username(s) like this: /set_role role_name username\n'
                                          'You can see all roles with /roles_list')
@@ -33,6 +35,8 @@ def set_role_handler(update: Update, ctx: CallbackContext):
         for k, v in default_user(role).items():
             ctx.bot_data['users'][username][k] = v
     update.message.reply_text(f'The following users have been promoted to {role}:\n' + "\n".join(usernames))
+    print('bot_data =', ctx.bot_data)
+    print('default_user =', default_user())
 
 
 def roles_list_handler(update: Update, ctx: CallbackContext):
@@ -57,6 +61,7 @@ def members_list_handler(update: Update, ctx: CallbackContext):
 
 def restrict_if_necessary(update: Update, ctx: CallbackContext):
     username = effective_username(update)
+    print(f'restrict_if_necessary(user={username})')
     user_data = ctx.bot_data['users'][username]
     if user_data['uses'] <= 0:
         print(f'retstricting user {username}')
@@ -88,8 +93,8 @@ def effective_username(update: Update):
 
 def url_handler(update: Update, ctx: CallbackContext):
     input_url = update.message.text
-    print(input_url)
-    print(ctx.bot_data)
+    print('bot_data =', ctx.bot_data)
+    print(f'url_handler(user={effective_username(update)}, url={input_url})')
     user_data = ctx.bot_data['users'].setdefault(effective_username(update), default_user())
     if user_data['uses'] > 0:
         download_url_sent = False
@@ -109,7 +114,8 @@ def url_handler(update: Update, ctx: CallbackContext):
     else:
         update.message.delete()
     restrict_if_necessary(update, ctx)
-    print(ctx.bot_data)
+    print('bot_data =', ctx.bot_data)
+    print('default_user =', default_user())
 
 
 def default_user(role: str = 'regular'):
@@ -149,7 +155,7 @@ def main():
     jq.run_once(unrestrict_everyone_necessary, 1)
     jq.run_daily(unrestrict_everyone_necessary, dt.time(0, 0, 0, 0))
     jq.run_repeating(simulate_activity, interval=dt.timedelta(minutes=20))
-    # jq.run_repeating(lambda ctx: print(ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
+    # jq.run_repeating(lambda ctx: print('bot_data =', ctx.bot_data), interval=dt.timedelta(seconds=5))  # for debug
     jq.start()
 
     admin_usernames = os.environ['ADMIN_USERNAMES'].split(' ')
