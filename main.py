@@ -1,6 +1,6 @@
 import datetime as dt
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
-from telegram.error import BadRequest
+from telegram.error import BadRequest, NetworkError
 from telegram.ext import Updater, CallbackContext, CommandHandler, Dispatcher, Filters, MessageHandler, \
     PicklePersistence, JobQueue, Defaults
 from freepik import *
@@ -10,9 +10,14 @@ import pytz
 from roles import roles
 from ptbcontrib.postgres_persistence import PostgresPersistence
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 DEFAULT_TZINFO = pytz.FixedOffset(5 * 60 + 30)
+freepik_client = Freepik(os.environ['FREEPIK_USERNAME'], os.environ['FREEPIK_PASSWORD'], os.environ['2CAPTCHA_API_KEY'])
+
+
+class InvalidURLError(Exception):
+    pass
 
 
 def inline_handler(msg: str):
@@ -23,7 +28,7 @@ def inline_handler(msg: str):
 
 
 def set_role_handler(update: Update, ctx: CallbackContext):
-    print('bot_data =', ctx.bot_data)
+    # print('bot_data =', ctx.bot_data)
     print(update.message.text)
     if len(ctx.args) < 2:
         return update.message.reply_text('You have to specify the role and the username(s) like this: /set_role role_name username\n'
@@ -35,8 +40,8 @@ def set_role_handler(update: Update, ctx: CallbackContext):
         for k, v in default_user(role).items():
             ctx.bot_data['users'][username][k] = v
     update.message.reply_text(f'The following users have been promoted to {role}:\n' + "\n".join(usernames))
-    print('bot_data =', ctx.bot_data)
-    print('default_user =', default_user())
+    # print('bot_data =', ctx.bot_data)
+    # print('default_user =', default_user())
 
 
 def roles_list_handler(update: Update, ctx: CallbackContext):
@@ -61,7 +66,7 @@ def members_list_handler(update: Update, ctx: CallbackContext):
 
 def restrict_if_necessary(update: Update, ctx: CallbackContext):
     username = effective_username(update)
-    print(f'restrict_if_necessary(user={username})')
+    # print(f'restrict_if_necessary(user={username})')
     user_data = ctx.bot_data['users'][username]
     if user_data['uses'] <= 0:
         print(f'retstricting user {username}')
@@ -80,11 +85,12 @@ def restrict_if_necessary(update: Update, ctx: CallbackContext):
 
 
 def input_url2download_url(input_url: str):
+    global freepik_client
     if 'freepik' in input_url:
-        return freepik_input_url2download_url(input_url)
-    if 'flaticon' in input_url:
-        return flaticon_input_url2download_url(input_url)
-    raise AttributeError
+        return freepik_client.get_download_url(input_url)
+    # if 'flaticon' in input_url:
+    #     return flaticon_input_url2download_url(input_url)
+    raise InvalidURLError
 
 
 def effective_username(update: Update):
@@ -93,19 +99,25 @@ def effective_username(update: Update):
 
 def url_handler(update: Update, ctx: CallbackContext):
     input_url = update.message.text
-    print('bot_data =', ctx.bot_data)
+    # print('bot_data =', ctx.bot_data)
     print(f'url_handler(user={effective_username(update)}, url={input_url})')
     user_data = ctx.bot_data['users'].setdefault(effective_username(update), default_user())
     if user_data['uses'] > 0:
         download_url_sent = False
         try:
             download_url = input_url2download_url(input_url)
-            update.message.reply_text(
-                'To download the file, use the button below',
-                reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url)))
+            try:
+                update.message.reply_text(
+                    'To download the file, use the button below',
+                    reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url)))
+            except NetworkError:  # After some time idle this may happen
+                update.message.reply_text(
+                    'To download the file, use the button below',
+                    reply_markup=InlineKeyboardMarkup.from_button(InlineKeyboardButton('Download', url=download_url)))
             download_url_sent = True
-        except AttributeError:
+        except InvalidURLError as e:
             update.message.reply_text('This is not a valid url')
+            print(e)
         except Exception as e:
             update.message.reply_text('Something went wrong with the request')
             print(e)
@@ -114,8 +126,8 @@ def url_handler(update: Update, ctx: CallbackContext):
     else:
         update.message.delete()
     restrict_if_necessary(update, ctx)
-    print('bot_data =', ctx.bot_data)
-    print('default_user =', default_user())
+    # print('bot_data =', ctx.bot_data)
+    # print('default_user =', default_user())
 
 
 def default_user(role: str = 'regular'):
@@ -141,6 +153,16 @@ def simulate_activity(ctx: CallbackContext):
 
 
 def main():
+    global freepik_client
+    if not os.path.exists('session.pickle'):
+        print('creating new session')
+        if freepik_client.sign_in():
+            with open('session.pickle', 'wb') as file:
+                pickle.dump(freepik_client.session, file)
+    else:
+        print('loading cached session')
+        with open('session.pickle', 'rb') as file:
+            freepik_client.session = pickle.load(file)
     defaults = Defaults(tzinfo=DEFAULT_TZINFO)
     persistence = PostgresPersistence(os.environ['DATABASE_URL'].replace('postgres://', 'postgresql://'))  # PicklePersistence('persistence.pickle')
     updater = Updater(token=os.environ['TELEGRAM_TOKEN'], use_context=True, persistence=persistence, defaults=defaults)
@@ -180,6 +202,7 @@ def main():
         CommandHandler('roles_list', roles_list_handler, filters=private_chat & only_admins, pass_args=True),
         CommandHandler('members_list', members_list_handler, filters=private_chat & only_admins, pass_args=True),
 
+        MessageHandler(group_chat & Filters.forwarded, lambda upd, ctx: upd.message.delete()),
         MessageHandler(group_chat & has_url, url_handler),
         MessageHandler(group_chat & ~has_url & ~only_admins, lambda upd, ctx: upd.message.delete()),
 
