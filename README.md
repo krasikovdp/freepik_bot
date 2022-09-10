@@ -12,9 +12,17 @@ The token you get from BotFather when you create a bot
 
 Usernames of admins, separated with spaces. Admins can change users' roles through private messages
 
-### FREEPIK_GR_TOKEN
+### FREEPIK_USERNAME
 
-Get this from freepik.com cookie GR_TOKEN
+Your freepik account's username or e-mail
+
+### FREEPIK_PASSWORD
+
+Your freepik account's password
+
+### 2CAPTCHA_API_KEY
+
+2captcha api key from the developer or customer tab
 
 ### DATABASE_URL
 
