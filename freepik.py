@@ -18,6 +18,8 @@ class Freepik:
         self.on_premium_end = None
         self.sitekey_re = re.compile(r'data-sitekey="(\S+)"')
         self.sitekey_re2 = re.compile(r"var RE_CAPTCHA_KEY_INVISIBLE = '(\S+)'")
+        self.sitekey_re3 = re.compile(r'RECAPTCHA_SITE_KEY\)!=null\?Sl:"(\S+)"')
+        self.sitekey_res = [self.sitekey_re, self.sitekey_re2, self.sitekey_re3]
         self.csrf_name_re = re.compile(r'name="csrf_name" value="(\S+)"')
         self.csrf_value_re = re.compile(r'name="csrf_value" value="(\S+)"')
         self.id_re = re.compile(r'(\d+)\.htm')
@@ -26,10 +28,11 @@ class Freepik:
         self.on_premium_end = f
 
     def _solve_invisible_captcha(self, resp: requests.Response):
-        try:
-            sitekey = self.sitekey_re.search(resp.text).group(1)
-        except AttributeError as e:
-            sitekey = self.sitekey_re2.search(resp.text).group(1)
+        for sitekey_re in self.sitekey_res:
+            try:
+                sitekey = sitekey_re.search(resp.text).group(1)
+            except AttributeError as e:
+                continue
         try:
             with threading.Lock():
                 return self.solver.recaptcha(sitekey=sitekey, url=resp.request.url, invisible=1)['code']
@@ -38,23 +41,23 @@ class Freepik:
 
     def sign_in(self) -> bool:
         print('signing in')
-        login_page_url = 'https://id.freepikcompany.com/login'
+        login_page_url = 'https://id.freepikcompany.com/v2/assets/index.dd12b099.js'
         sign_in_page_resp = self.session.get(login_page_url)
-        csrf_name = self.csrf_name_re.search(sign_in_page_resp.text).group(1)
-        csrf_value = self.csrf_value_re.search(sign_in_page_resp.text).group(1)
+        # csrf_name = self.csrf_name_re.search(sign_in_page_resp.text).group(1)
+        # csrf_value = self.csrf_value_re.search(sign_in_page_resp.text).group(1)
         captcha_token = self._solve_invisible_captcha(sign_in_page_resp)
 
-        xhr_login_url = 'https://id.freepikcompany.com/xhr/login'
-        form_data = {'client_id': 'freepik',
-                     'secret': '',
-                     'username': self.username,
+        login_url = 'https://id-api.freepikcompany.com/v2/login'
+        params = {'client_id': 'freepik'}
+        form_data = {'email': self.username,
                      'password': self.password,
-                     'g-recaptcha-response': captcha_token,
-                     'csrf_name': csrf_name,
-                     'csrf_value': csrf_value}
-        xhr_login_resp = self.session.post(xhr_login_url, form_data)
+                     'recaptchaToken': captcha_token,
+                     'lang': 'en-GB',
+                     'keepSigned': True}
+        xhr_login_resp = self.session.post(login_url, form_data, params=params)
 
-        oauth_url = xhr_login_resp.json()['data']['url']
+        print(xhr_login_resp.json())
+        oauth_url = xhr_login_resp.json()['data']['redirectUrl']
         self.session.get(oauth_url)
         return 'GR_TOKEN' in self.session.cookies
 
@@ -119,4 +122,7 @@ if __name__ == '__main__':
         print('loading cached session')
         with open('session.pickle', 'rb') as file:
             freepik.session = pickle.load(file)
-    print(freepik._download_url_from_id(7971318))
+    print(freepik._download_url_from_id(15051129))
+    print(freepik._download_url_from_id(15049394))
+    print(freepik._download_url_from_id(10310711))
+    print(freepik._download_url_from_id(15051323))

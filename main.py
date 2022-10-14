@@ -98,10 +98,13 @@ def effective_username(update: Update):
 
 
 def url_handler(update: Update, ctx: CallbackContext):
+    user_data = ctx.bot_data['users'].setdefault(effective_username(update), default_user())
+    if user_data['role'] == 'regular' and ctx.bot_data.get('allow_members_only'):
+        update.message.delete()
+        return
     input_url = update.message.text
     # print('bot_data =', ctx.bot_data)
     print(f'url_handler(user={effective_username(update)}, url={input_url})')
-    user_data = ctx.bot_data['users'].setdefault(effective_username(update), default_user())
     if user_data['uses'] > 0:
         download_url_sent = False
         try:
@@ -152,6 +155,14 @@ def simulate_activity(ctx: CallbackContext):
         a = i * 5 + 4
 
 
+def allow_members_only_handler(update: Update, ctx: CallbackContext):
+    ctx.bot_data['allow_members_only'] = True
+
+
+def allow_all_handler(update: Update, ctx: CallbackContext):
+    ctx.bot_data['allow_members_only'] = False
+
+
 def main():
     global freepik_client
     if not os.path.exists('session.pickle'):
@@ -186,6 +197,8 @@ def main():
         ('/set_role', 'assigns a role to user(s), usage: /set_role role username'),
         ('/roles_list', 'prints all roles and their perks'),
         ('/members_list', 'lists all members in the format role - username'),
+        ('/allow_members_only', 'only lets members (bronze, silver, gold and diamond users) to send links'),
+        ('/allow_all', 'allows all users to send links but maintaining their corresponding restrictions timings'),
     ])
 
     only_admins = Filters.user(username=admin_usernames)
@@ -201,6 +214,8 @@ def main():
         CommandHandler('set_role', set_role_handler, filters=private_chat & only_admins, pass_args=True),
         CommandHandler('roles_list', roles_list_handler, filters=private_chat & only_admins, pass_args=True),
         CommandHandler('members_list', members_list_handler, filters=private_chat & only_admins, pass_args=True),
+        CommandHandler('allow_members_only', allow_members_only_handler, filters=private_chat & only_admins),
+        CommandHandler('allow_all', allow_all_handler, filters=private_chat & only_admins),
 
         MessageHandler(group_chat & Filters.forwarded, lambda upd, ctx: upd.message.delete()),
         MessageHandler(group_chat & has_url, url_handler),
