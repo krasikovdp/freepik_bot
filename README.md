@@ -14,7 +14,7 @@ Usernames of admins, separated with spaces. Admins can change users' roles throu
 
 ### FREEPIK_USERNAME
 
-Your freepik account's username or e-mail
+Your freepik account's e-mail
 
 ### FREEPIK_PASSWORD
 

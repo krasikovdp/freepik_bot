@@ -57,7 +57,7 @@ def roles_list_handler(update: Update, ctx: CallbackContext):
 
 
 def members_list_handler(update: Update, ctx: CallbackContext):
-    lines = [f'{user_data["role"]} - {username}' for username, user_data in ctx.bot_data['users'].items()]
+    lines = [f'{user_data["role"]} - {username}' for username, user_data in ctx.bot_data['users'].items() if user_data["role"] != 'regular']
     msg = '\n'.join(sorted(lines))
     if not msg:
         msg = 'There are no members'
